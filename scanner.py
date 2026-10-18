@@ -51,17 +51,18 @@ def get_font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_urls: list = None) -> bytes:
-    W, H = 900, 520
+    W, H = 920, 420  # Chiều cao hạ 20%
     card = Image.new("RGB", (W, H), (13, 27, 36))
     draw = ImageDraw.Draw(card)
 
-    font_header = get_font(22, bold=True)
-    font_rank = get_font(16, bold=True)
-    font_price = get_font(26, bold=True)
-    font_market = get_font(15, bold=False)
+    font_header = get_font(28, bold=True)
+    font_rank = get_font(20, bold=True)
+    font_price = get_font(34, bold=True)  # Cỡ chữ tăng +30%
+    font_market = get_font(19, bold=False)
 
+    # 1. Khung chứa ảnh vũ khí bên trái
     left_w = 260
-    draw.rectangle([(20, 20), (left_w, H - 20)], fill=(10, 20, 28))
+    draw.rectangle([(15, 15), (left_w, H - 15)], fill=(10, 20, 28))
 
     skin_loaded = False
     if img_urls:
@@ -70,7 +71,7 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
         ssl_ctx.verify_mode = ssl.CERT_NONE
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Referer": "https://pricempire.com/"
+            "Accept": "image/*,*/*;q=0.8"
         }
         for u in img_urls:
             if not u:
@@ -81,62 +82,63 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
                     raw_data = resp.read()
                     if raw_data:
                         raw_img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
-                        raw_img.thumbnail((left_w - 30, H - 60), Image.Resampling.LANCZOS)
-                        x_pos = 20 + (left_w - 20 - raw_img.width) // 2
+                        raw_img.thumbnail((left_w - 20, H - 40), Image.Resampling.LANCZOS)
+                        x_pos = 15 + (left_w - 15 - raw_img.width) // 2
                         y_pos = (H - raw_img.height) // 2
                         card.paste(raw_img, (x_pos, y_pos), raw_img)
                         skin_loaded = True
                         break
             except Exception as e:
-                print(f"Thử tải {u[:40]}...: {e}")
+                print(f"Lỗi tải ảnh: {e}")
 
     if not skin_loaded:
-        draw.text((55, H // 2 - 12), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
+        draw.text((50, H // 2 - 14), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
 
+    # 2. Hai cột bên phải
     right_x = left_w + 25
     col_w = (W - right_x - 30) // 2
 
     # Header GIÁ BÁN
-    draw.rectangle([(right_x, 20), (right_x + col_w, 65)], fill=(0, 77, 79))
-    draw.text((right_x + col_w // 2 - 45, 30), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
+    draw.rectangle([(right_x, 15), (right_x + col_w, 62)], fill=(0, 77, 79))
+    draw.text((right_x + col_w // 2 - 60, 23), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
 
     # Header GIÁ MUA
     buy_x = right_x + col_w + 15
-    draw.rectangle([(buy_x, 20), (buy_x + col_w, 65)], fill=(0, 56, 92))
-    draw.text((buy_x + col_w // 2 - 45, 30), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
+    draw.rectangle([(buy_x, 15), (buy_x + col_w, 62)], fill=(0, 56, 92))
+    draw.text((buy_x + col_w // 2 - 60, 23), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
 
-    y_start = 85
-    row_h = 102
+    y_start = 74
+    row_h = 84
     red_dot = (235, 50, 50)
 
-    # 4 giá bán
+    # 3. Vẽ 4 dòng GIÁ BÁN
     s1_price = sell_list[0]['price'] if sell_list and sell_list[0]['price'] > 0 else 1.0
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(right_x + 5, cur_y + 4), (right_x + 16, cur_y + 15)], fill=red_dot)
-        draw.text((right_x + 22, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
+        draw.ellipse([(right_x + 5, cur_y + 3), (right_x + 18, cur_y + 16)], fill=red_dot)
+        draw.text((right_x + 24, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(sell_list):
             item = sell_list[i]
-            draw.text((right_x + 22, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
+            draw.text((right_x + 24, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             diff_text = ""
             if i > 0:
                 pct = ((item['price'] - s1_price) / s1_price) * 100.0
                 diff_text = f" ({pct:+.2f}%)"
             provider = item.get("provider", "Market")
-            draw.text((right_x + 22, cur_y + 58), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
+            draw.text((right_x + 24, cur_y + 58), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
 
-    # 4 giá mua
+    # 4. Vẽ 4 dòng GIÁ MUA
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(buy_x + 5, cur_y + 4), (buy_x + 16, cur_y + 15)], fill=red_dot)
-        draw.text((buy_x + 22, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
+        draw.ellipse([(buy_x + 5, cur_y + 3), (buy_x + 18, cur_y + 16)], fill=red_dot)
+        draw.text((buy_x + 24, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(buy_list):
             item = buy_list[i]
-            draw.text((buy_x + 22, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
+            draw.text((buy_x + 24, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             provider = "Steam" if i == 3 else item.get("provider", "Market")
-            draw.text((buy_x + 22, cur_y + 58), provider, fill=(145, 165, 185), font=font_market)
+            draw.text((buy_x + 24, cur_y + 58), provider, fill=(145, 165, 185), font=font_market)
 
     out_buffer = io.BytesIO()
     card.save(out_buffer, format="PNG")
@@ -157,6 +159,7 @@ def send_telegram_card(skin_name: str, image_bytes: bytes) -> bool:
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(f'Content-Disposition: form-data; name="chat_id"\r\n\r\n{CHAT_ID}\r\n'.encode("utf-8"))
 
+    # Caption trên đầu
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(f'Content-Disposition: form-data; name="caption"\r\n\r\n{caption}\r\n'.encode("utf-8"))
 
@@ -166,6 +169,7 @@ def send_telegram_card(skin_name: str, image_bytes: bytes) -> bool:
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(b'Content-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n')
 
+    # File ảnh
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(b'Content-Disposition: form-data; name="photo"; filename="alert_card.png"\r\nContent-Type: image/png\r\n\r\n')
     body.extend(image_bytes)
@@ -252,9 +256,8 @@ def main():
         {
             "name": "StatTrak™ AWP | Oni Taiji (Field-Tested)",
             "img_urls": [
-                "https://cdn.pricempire.com/730/awp-oni-taiji-field-tested.png",
-                "https://cdn.pricempire.com/730/awp-oni-taiji.png",
-                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_cu_awp_oni_taiji_light_png.png"
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_cu_awp_oni_taiji_light_png.png",
+                "https://cdn.pricempire.com/730/awp-oni-taiji-field-tested.png"
             ],
             "sells": [
                 {"price": 346.35, "provider": "DMarket"},
@@ -272,9 +275,8 @@ def main():
         {
             "name": "★ StatTrak™ Butterfly Knife (Vanilla)",
             "img_urls": [
-                "https://cdn.pricempire.com/730/butterfly-knife.png",
-                "https://cdn.pricempire.com/730/butterfly-knife-vanilla.png",
-                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_knife_butterfly_light_png.png"
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_knife_butterfly_light_png.png",
+                "https://cdn.pricempire.com/730/butterfly-knife.png"
             ],
             "sells": [
                 {"price": 890.00, "provider": "Buff.163"},
@@ -292,9 +294,8 @@ def main():
         {
             "name": "AWP | Lightning Strike (Factory New)",
             "img_urls": [
-                "https://cdn.pricempire.com/730/awp-lightning-strike-factory-new.png",
-                "https://cdn.pricempire.com/730/awp-lightning-strike.png",
-                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_am_lightning_awp_light_png.png"
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_am_lightning_awp_light_png.png",
+                "https://cdn.pricempire.com/730/awp-lightning-strike-factory-new.png"
             ],
             "sells": [
                 {"price": 360.00, "provider": "Buff.163"},
@@ -312,9 +313,8 @@ def main():
         {
             "name": "M4A4 | Poseidon (Minimal Wear)",
             "img_urls": [
-                "https://cdn.pricempire.com/730/m4a4-poseidon-minimal-wear.png",
-                "https://cdn.pricempire.com/730/m4a4-poseidon.png",
-                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a4_poseidon_light_png.png"
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a4_poseidon_light_png.png",
+                "https://cdn.pricempire.com/730/m4a4-poseidon-minimal-wear.png"
             ],
             "sells": [
                 {"price": 890.00, "provider": "YouPin898"},
@@ -332,9 +332,8 @@ def main():
         {
             "name": "AK-47 | Fire Serpent (Field-Tested)",
             "img_urls": [
-                "https://cdn.pricempire.com/730/ak-47-fire-serpent-field-tested.png",
-                "https://cdn.pricempire.com/730/ak-47-fire-serpent.png",
-                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_ak47_cu_fireserpent_ak47_light_png.png"
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_ak47_cu_fireserpent_ak47_light_png.png",
+                "https://cdn.pricempire.com/730/ak-47-fire-serpent-field-tested.png"
             ],
             "sells": [
                 {"price": 575.00, "provider": "Buff.163"},
@@ -352,9 +351,8 @@ def main():
         {
             "name": "M4A1-S | Printstream (Factory New)",
             "img_urls": [
-                "https://cdn.pricempire.com/730/m4a1-s-printstream-factory-new.png",
-                "https://cdn.pricempire.com/730/m4a1-s-printstream.png",
-                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a1_s_printstream_light_png.png"
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a1_s_printstream_light_png.png",
+                "https://cdn.pricempire.com/730/m4a1-s-printstream-factory-new.png"
             ],
             "sells": [
                 {"price": 315.00, "provider": "CSFloat"},
