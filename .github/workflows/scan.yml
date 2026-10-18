@@ -1,0 +1,29 @@
+name: Pricempire 24/7 Scanner
+
+on:
+  schedule:
+    # Tự động chạy định kỳ mỗi 15 phút (24/7)
+    - cron: '*/15 * * * *'
+  # Cho phép bấm nút "Run workflow" để quét ngay lập tức bằng tay bất kỳ lúc nào
+  workflow_dispatch:
+
+jobs:
+  scan-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tải mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài đặt Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Chạy quét giá Pricempire
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PRICEMPIRE_API_KEY: ${{ secrets.PRICEMPIRE_API_KEY }}
+          MIN_PRICE: '100'
+          MAX_PRICE: '1000'
+        run: python scanner.py
