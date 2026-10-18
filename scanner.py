@@ -50,92 +50,93 @@ def get_font(size: int, bold: bool = False):
                 pass
     return ImageFont.load_default()
 
-# ---------------------------------------------------------------------------
-# Vẽ thẻ ảnh Infographic với TỶ LỆ TỐI ƯU & CHỮ SỐ CỰC ĐẠI TRÊN ĐIỆN THOẠI
-# ---------------------------------------------------------------------------
-def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_url: str = "") -> bytes:
-    W, H = 760, 560
+def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_urls: list = None) -> bytes:
+    W, H = 900, 520
     card = Image.new("RGB", (W, H), (13, 27, 36))
     draw = ImageDraw.Draw(card)
 
-    font_header = get_font(26, bold=True)
-    font_rank = get_font(20, bold=True)
-    font_price = get_font(38, bold=True)   # Chữ số giá tiền siêu to (38pt)
-    font_market = get_font(18, bold=False)
+    font_header = get_font(22, bold=True)
+    font_rank = get_font(16, bold=True)
+    font_price = get_font(26, bold=True)
+    font_market = get_font(15, bold=False)
 
-    # 1. Khung chứa ảnh vũ khí bên trái (240px)
-    left_w = 240
-    draw.rectangle([(15, 15), (left_w, H - 15)], fill=(10, 20, 28))
+    left_w = 260
+    draw.rectangle([(20, 20), (left_w, H - 20)], fill=(10, 20, 28))
 
-    # Tải ảnh từ GitHub CS2 CDN (không bao giờ bị chặn)
     skin_loaded = False
-    if img_url:
+    if img_urls:
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
         ssl_ctx.verify_mode = ssl.CERT_NONE
-        headers = {"User-Agent": "Mozilla/5.0"}
-        try:
-            req = urllib.request.Request(img_url, headers=headers)
-            with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as resp:
-                raw_data = resp.read()
-                if raw_data:
-                    raw_img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
-                    raw_img.thumbnail((left_w - 20, H - 50), Image.Resampling.LANCZOS)
-                    x_pos = 15 + (left_w - 15 - raw_img.width) // 2
-                    y_pos = (H - raw_img.height) // 2
-                    card.paste(raw_img, (x_pos, y_pos), raw_img)
-                    skin_loaded = True
-        except Exception as e:
-            print(f"Lỗi tải ảnh từ CDN: {e}")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Referer": "https://pricempire.com/"
+        }
+        for u in img_urls:
+            if not u:
+                continue
+            try:
+                req = urllib.request.Request(u, headers=headers)
+                with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as resp:
+                    raw_data = resp.read()
+                    if raw_data:
+                        raw_img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
+                        raw_img.thumbnail((left_w - 30, H - 60), Image.Resampling.LANCZOS)
+                        x_pos = 20 + (left_w - 20 - raw_img.width) // 2
+                        y_pos = (H - raw_img.height) // 2
+                        card.paste(raw_img, (x_pos, y_pos), raw_img)
+                        skin_loaded = True
+                        break
+            except Exception as e:
+                print(f"Thử tải {u[:40]}...: {e}")
 
     if not skin_loaded:
-        draw.text((45, H // 2 - 15), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
+        draw.text((55, H // 2 - 12), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
 
-    # 2. Hai cột bên phải
-    right_x = left_w + 20
-    col_w = (W - right_x - 20) // 2
+    right_x = left_w + 25
+    col_w = (W - right_x - 30) // 2
 
     # Header GIÁ BÁN
-    draw.rectangle([(right_x, 15), (right_x + col_w, 70)], fill=(0, 77, 79))
-    draw.text((right_x + col_w // 2 - 55, 27), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
+    draw.rectangle([(right_x, 20), (right_x + col_w, 65)], fill=(0, 77, 79))
+    draw.text((right_x + col_w // 2 - 45, 30), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
 
     # Header GIÁ MUA
-    buy_x = right_x + col_w + 10
-    draw.rectangle([(buy_x, 15), (buy_x + col_w, 70)], fill=(0, 56, 92))
-    draw.text((buy_x + col_w // 2 - 55, 27), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
+    buy_x = right_x + col_w + 15
+    draw.rectangle([(buy_x, 20), (buy_x + col_w, 65)], fill=(0, 56, 92))
+    draw.text((buy_x + col_w // 2 - 45, 30), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
 
-    y_start = 88
-    row_h = 114
+    y_start = 85
+    row_h = 102
     red_dot = (235, 50, 50)
 
-    # 3. Vẽ 4 dòng GIÁ BÁN
+    # 4 giá bán
     s1_price = sell_list[0]['price'] if sell_list and sell_list[0]['price'] > 0 else 1.0
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(right_x + 4, cur_y + 4), (right_x + 18, cur_y + 18)], fill=red_dot)
-        draw.text((right_x + 26, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
+        draw.ellipse([(right_x + 5, cur_y + 4), (right_x + 16, cur_y + 15)], fill=red_dot)
+        draw.text((right_x + 22, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(sell_list):
             item = sell_list[i]
-            draw.text((right_x + 26, cur_y + 26), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
+            draw.text((right_x + 22, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             diff_text = ""
             if i > 0:
                 pct = ((item['price'] - s1_price) / s1_price) * 100.0
                 diff_text = f" ({pct:+.2f}%)"
             provider = item.get("provider", "Market")
-            draw.text((right_x + 26, cur_y + 70), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
+            draw.text((right_x + 22, cur_y + 58), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
 
-    # 4. Vẽ 4 dòng GIÁ MUA
+    # 4 giá mua
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(buy_x + 4, cur_y + 4), (buy_x + 18, cur_y + 18)], fill=red_dot)
-        draw.text((buy_x + 26, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
+        draw.ellipse([(buy_x + 5, cur_y + 4), (buy_x + 16, cur_y + 15)], fill=red_dot)
+        draw.text((buy_x + 22, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(buy_list):
             item = buy_list[i]
-            draw.text((buy_x + 26, cur_y + 26), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
+            draw.text((buy_x + 22, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             provider = "Steam" if i == 3 else item.get("provider", "Market")
-            draw.text((buy_x + 26, cur_y + 70), provider, fill=(145, 165, 185), font=font_market)
+            draw.text((buy_x + 22, cur_y + 58), provider, fill=(145, 165, 185), font=font_market)
 
     out_buffer = io.BytesIO()
     card.save(out_buffer, format="PNG")
@@ -247,11 +248,14 @@ def main():
     old_state = load_state()
     new_state = dict(old_state)
 
-    # Danh mục ảnh tĩnh tải trực tiếp từ GitHub CS2 Panorama CDN (luôn thành công 100%)
     market_candidates = [
         {
             "name": "StatTrak™ AWP | Oni Taiji (Field-Tested)",
-            "img_url": "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_cu_awp_oni_taiji_light_png.png",
+            "img_urls": [
+                "https://cdn.pricempire.com/730/awp-oni-taiji-field-tested.png",
+                "https://cdn.pricempire.com/730/awp-oni-taiji.png",
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_cu_awp_oni_taiji_light_png.png"
+            ],
             "sells": [
                 {"price": 346.35, "provider": "DMarket"},
                 {"price": 395.50, "provider": "CSFloat"},
@@ -267,7 +271,11 @@ def main():
         },
         {
             "name": "★ StatTrak™ Butterfly Knife (Vanilla)",
-            "img_url": "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_knife_butterfly_light_png.png",
+            "img_urls": [
+                "https://cdn.pricempire.com/730/butterfly-knife.png",
+                "https://cdn.pricempire.com/730/butterfly-knife-vanilla.png",
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_knife_butterfly_light_png.png"
+            ],
             "sells": [
                 {"price": 890.00, "provider": "Buff.163"},
                 {"price": 995.00, "provider": "CSFloat"},
@@ -283,7 +291,11 @@ def main():
         },
         {
             "name": "AWP | Lightning Strike (Factory New)",
-            "img_url": "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_am_lightning_awp_light_png.png",
+            "img_urls": [
+                "https://cdn.pricempire.com/730/awp-lightning-strike-factory-new.png",
+                "https://cdn.pricempire.com/730/awp-lightning-strike.png",
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_awp_am_lightning_awp_light_png.png"
+            ],
             "sells": [
                 {"price": 360.00, "provider": "Buff.163"},
                 {"price": 410.00, "provider": "CSFloat"},
@@ -299,7 +311,11 @@ def main():
         },
         {
             "name": "M4A4 | Poseidon (Minimal Wear)",
-            "img_url": "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a4_poseidon_light_png.png",
+            "img_urls": [
+                "https://cdn.pricempire.com/730/m4a4-poseidon-minimal-wear.png",
+                "https://cdn.pricempire.com/730/m4a4-poseidon.png",
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a4_poseidon_light_png.png"
+            ],
             "sells": [
                 {"price": 890.00, "provider": "YouPin898"},
                 {"price": 995.00, "provider": "Buff.Market"},
@@ -315,7 +331,11 @@ def main():
         },
         {
             "name": "AK-47 | Fire Serpent (Field-Tested)",
-            "img_url": "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_ak47_cu_fireserpent_ak47_light_png.png",
+            "img_urls": [
+                "https://cdn.pricempire.com/730/ak-47-fire-serpent-field-tested.png",
+                "https://cdn.pricempire.com/730/ak-47-fire-serpent.png",
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_ak47_cu_fireserpent_ak47_light_png.png"
+            ],
             "sells": [
                 {"price": 575.00, "provider": "Buff.163"},
                 {"price": 645.00, "provider": "Skins.com"},
@@ -331,7 +351,11 @@ def main():
         },
         {
             "name": "M4A1-S | Printstream (Factory New)",
-            "img_url": "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a1_s_printstream_light_png.png",
+            "img_urls": [
+                "https://cdn.pricempire.com/730/m4a1-s-printstream-factory-new.png",
+                "https://cdn.pricempire.com/730/m4a1-s-printstream.png",
+                "https://raw.githubusercontent.com/ByMykel/counter-strike-image-tracker/main/static/panorama/images/econ/default_generated/weapon_m4a1_cu_m4a1_s_printstream_light_png.png"
+            ],
             "sells": [
                 {"price": 315.00, "provider": "CSFloat"},
                 {"price": 355.00, "provider": "Buff.Market"},
@@ -369,7 +393,7 @@ def main():
 
         if should_alert and not is_same:
             print(f"[CẢNH BÁO] {name} thỏa mãn {reason}")
-            img_bytes = render_infographic_card(name, sells, buys, skin.get("img_url", ""))
+            img_bytes = render_infographic_card(name, sells, buys, skin.get("img_urls", []))
             ok = send_telegram_card(name, img_bytes)
             if ok:
                 alerted_count += 1
