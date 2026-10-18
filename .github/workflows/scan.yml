@@ -1,14 +1,13 @@
-name: Pricempire 24/7 Scanner
+name: Pricempire 24/7 Browser Scanner
 
 on:
   schedule:
-    # Tự động chạy định kỳ mỗi 15 phút (24/7)
+    # Tự động mở trình duyệt lướt web mỗi 15 phút (24/7)
     - cron: '*/15 * * * *'
-  # Cho phép bấm nút "Run workflow" để quét ngay lập tức bằng tay bất kỳ lúc nào
   workflow_dispatch:
 
 jobs:
-  scan-prices:
+  browser-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Tải mã nguồn
@@ -19,11 +18,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Chạy quét giá Pricempire
+      - name: Cài đặt trình duyệt Playwright Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright
+          playwright install chromium --with-deps
+
+      - name: Chạy trình duyệt tự động quét giá Pricempire
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PRICEMPIRE_API_KEY: ${{ secrets.PRICEMPIRE_API_KEY }}
           MIN_PRICE: '100'
           MAX_PRICE: '1000'
         run: python scanner.py
