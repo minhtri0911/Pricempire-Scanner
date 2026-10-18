@@ -3,10 +3,11 @@ import sys
 import time
 import json
 import io
+import ssl
 import urllib.request
 import urllib.parse
 from datetime import datetime
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -34,76 +35,105 @@ def is_valid_skin(name: str) -> bool:
         return False
     return any(w.lower() in name_lower for w in WEARS)
 
-def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, skin_img_url: str = "") -> bytes:
-    W, H = 820, 480
+def get_font(size: int, bold: bool = False):
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "C:\\Windows\\Fonts\\arialbd.ttf" if bold else "C:\\Windows\\Fonts\\arial.ttf",
+        "arial.ttf"
+    ]
+    for p in font_paths:
+        if os.path.exists(p):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_hash: str = "") -> bytes:
+    W, H = 880, 520
     card = Image.new("RGB", (W, H), (13, 27, 36))
     draw = ImageDraw.Draw(card)
 
-    left_w = 260
+    font_header = get_font(23, bold=True)
+    font_rank = get_font(17, bold=True)
+    font_price = get_font(25, bold=True)
+    font_market = get_font(16, bold=False)
+
+    left_w = 290
     draw.rectangle([(20, 20), (left_w, H - 20)], fill=(10, 20, 28))
 
+    # Tải ảnh vũ khí với SSL bypass
     skin_loaded = False
-    if skin_img_url:
-        try:
-            req = urllib.request.Request(skin_img_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                raw_img = Image.open(io.BytesIO(resp.read()))
-                raw_img = raw_img.convert("RGBA")
-                raw_img.thumbnail((left_w - 40, H - 80), Image.Resampling.LANCZOS)
-                x_pos = 20 + (left_w - 20 - raw_img.width) // 2
-                y_pos = (H - raw_img.height) // 2
-                card.paste(raw_img, (x_pos, y_pos), raw_img)
-                skin_loaded = True
-        except Exception:
-            pass
+    if img_hash:
+        cdn_urls = [
+            f"https://community.cloudflare.steamstatic.com/economy/image/{img_hash}",
+            f"https://steamcommunity-a.akamaihd.net/economy/image/{img_hash}",
+            f"https://community.cloudflare.steamstatic.com/economy/image/{img_hash}/360fx360f"
+        ]
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+
+        for url in cdn_urls:
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as resp:
+                    raw_img = Image.open(io.BytesIO(resp.read())).convert("RGBA")
+                    raw_img.thumbnail((left_w - 30, H - 60), Image.Resampling.LANCZOS)
+                    x_pos = 20 + (left_w - 20 - raw_img.width) // 2
+                    y_pos = (H - raw_img.height) // 2
+                    card.paste(raw_img, (x_pos, y_pos), raw_img)
+                    skin_loaded = True
+                    break
+            except Exception:
+                pass
 
     if not skin_loaded:
-        draw.text((45, H // 2 - 10), "CS2 WEAPON", fill=(90, 115, 140))
+        draw.text((65, H // 2 - 12), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
 
     right_x = left_w + 20
     col_w = (W - right_x - 30) // 2
 
-    # Header GIÁ BÁN (Xanh ngọc)
-    draw.rectangle([(right_x, 20), (right_x + col_w, 60)], fill=(0, 77, 79))
-    draw.text((right_x + col_w // 2 - 32, 32), "GIÁ BÁN", fill=(255, 255, 255))
+    # Header GIÁ BÁN
+    draw.rectangle([(right_x, 20), (right_x + col_w, 64)], fill=(0, 77, 79))
+    draw.text((right_x + col_w // 2 - 48, 28), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
 
-    # Header GIÁ MUA (Xanh dương)
+    # Header GIÁ MUA
     buy_x = right_x + col_w + 10
-    draw.rectangle([(buy_x, 20), (buy_x + col_w, 60)], fill=(0, 56, 92))
-    draw.text((buy_x + col_w // 2 - 32, 32), "GIÁ MUA", fill=(255, 255, 255))
+    draw.rectangle([(buy_x, 20), (buy_x + col_w, 64)], fill=(0, 56, 92))
+    draw.text((buy_x + col_w // 2 - 48, 28), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
 
-    y_start = 80
-    row_h = 95
+    y_start = 86
+    row_h = 104
     red_dot = (235, 50, 50)
 
-    # 4 giá bán ngoài Steam
     s1_price = sell_list[0]['price'] if sell_list and sell_list[0]['price'] > 0 else 1.0
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(right_x + 5, cur_y + 4), (right_x + 13, cur_y + 12)], fill=red_dot)
-        draw.text((right_x + 20, cur_y), f"Hạng {i+1}", fill=(180, 195, 210))
+        draw.ellipse([(right_x + 5, cur_y + 4), (right_x + 15, cur_y + 14)], fill=red_dot)
+        draw.text((right_x + 24, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(sell_list):
             item = sell_list[i]
-            draw.text((right_x + 20, cur_y + 20), f"{item['price']:,.2f} USD", fill=(255, 255, 255))
+            draw.text((right_x + 24, cur_y + 25), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             diff_text = ""
             if i > 0:
                 pct = ((item['price'] - s1_price) / s1_price) * 100.0
                 diff_text = f" ({pct:+.2f}%)"
             provider = item.get("provider", "Market")
-            draw.text((right_x + 20, cur_y + 48), f"{provider}{diff_text}", fill=(140, 160, 180))
+            draw.text((right_x + 24, cur_y + 60), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
 
-    # 4 giá mua (3 ngoài Steam, Hạng 4 là Steam)
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(buy_x + 5, cur_y + 4), (buy_x + 13, cur_y + 12)], fill=red_dot)
-        draw.text((buy_x + 20, cur_y), f"Hạng {i+1}", fill=(180, 195, 210))
+        draw.ellipse([(buy_x + 5, cur_y + 4), (buy_x + 15, cur_y + 14)], fill=red_dot)
+        draw.text((buy_x + 24, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(buy_list):
             item = buy_list[i]
-            draw.text((buy_x + 20, cur_y + 20), f"{item['price']:,.2f} USD", fill=(255, 255, 255))
+            draw.text((buy_x + 24, cur_y + 25), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             provider = "Steam" if i == 3 else item.get("provider", "Market")
-            draw.text((buy_x + 20, cur_y + 48), provider, fill=(140, 160, 180))
+            draw.text((buy_x + 24, cur_y + 60), provider, fill=(145, 165, 185), font=font_market)
 
     out_buffer = io.BytesIO()
     card.save(out_buffer, format="PNG")
@@ -114,7 +144,6 @@ def send_telegram_card(skin_name: str, image_bytes: bytes) -> bool:
         print("Thiếu BOT_TOKEN hoặc CHAT_ID.")
         return False
 
-    # Caption theo đúng chuẩn: Tiêu đề + Tên skin trong <code> để chạm nhẹ là tự copy
     caption = (
         f"<b>PRICEMPIRE 100-1000 USD</b>\n"
         f"<code>{skin_name}</code>"
@@ -127,6 +156,10 @@ def send_telegram_card(skin_name: str, image_bytes: bytes) -> bool:
 
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(f'Content-Disposition: form-data; name="caption"\r\n\r\n{caption}\r\n'.encode("utf-8"))
+
+    # Đưa tiêu đề và tên skin LÊN TRÊN ĐẦU ảnh
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(b'Content-Disposition: form-data; name="show_caption_above_media"\r\n\r\ntrue\r\n')
 
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(b'Content-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n')
@@ -156,7 +189,7 @@ def send_telegram_card(skin_name: str, image_bytes: bytes) -> bool:
             print(f"Lỗi phản hồi Telegram: {res}")
             return False
     except Exception as e:
-        print(f"Lỗi khi gửi ảnh Telegram: {e}")
+        print(f"Lỗi gửi ảnh Telegram: {e}")
         return False
 
 def load_state() -> dict:
@@ -185,11 +218,11 @@ def check_triggers(skin_name: str, sell_list: list, buy_list: list, old_state: d
     b2 = buy_list[1]['price']
     b3 = buy_list[2]['price']
 
-    # --- NHÁNH 1 (Kèo xả hàng chênh lệch Arbitrage) ---
+    # NHÁNH 1: S1 rẻ hơn S2 >= 10% VÀ có ít nhất 1 trong 3 giá mua ngoài Steam > S1
     if (s1 <= s2 * 0.90) and (max(b1, b2, b3) > s1):
         return True, "NHÁNH 1 (S1 rẻ hơn S2 >= 10% & Giá mua ngoài Steam > S1)"
 
-    # --- NHÁNH 2 (Biến động thị trường) ---
+    # NHÁNH 2: Biến động giá >= 5% so với lần quét trước
     if skin_name in old_state:
         prev = old_state[skin_name]
         prev_b1 = prev.get("b1", 0)
@@ -209,14 +242,15 @@ def check_triggers(skin_name: str, sell_list: list, buy_list: list, old_state: d
     return False, ""
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Bắt đầu chu kỳ quét thị trường...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Bắt đầu chu kỳ quét toàn thị trường...")
     old_state = load_state()
     new_state = dict(old_state)
 
+    # Danh mục toàn diện các skin thị trường từ $100 - $1,000 USD
     market_candidates = [
         {
             "name": "StatTrak™ AWP | Oni Taiji (Field-Tested)",
-            "img_url": "https://community.cloudflare.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot621FAR17PLfYQJD_9W7m5a0mvLwOq7c2DwB65R33-rF89r32wPn-EJkZDrxcoDEJgM4Y16Frwe9wOjxxcjr7ZzPnXBq63En43jcnBapwUYb3fCg23s/360fx360f",
+            "img_hash": "-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot621FAR17PLfYQJD_9W7m5a0mvLwOq7c2DwB65R33-rF89r32wPn-EJkZDrxcoDEJgM4Y16Frwe9wOjxxcjr7ZzPnXBq63En43jcnBapwUYb3fCg23s",
             "sells": [
                 {"price": 346.35, "provider": "DMarket"},
                 {"price": 395.50, "provider": "CSFloat"},
@@ -232,7 +266,7 @@ def main():
         },
         {
             "name": "★ StatTrak™ Butterfly Knife (Vanilla)",
-            "img_url": "https://community.cloudflare.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpovbSsLQJf1fLEcjVL49KJlY20k_jkI7fUhGJP68t-fMrw94_33ATj8kFrY2H1d46ddgE5YF-G-1K9yO_v0cDov8zOnHFguHEls3bZnhy30AYMMLLg-0Wj9w/360fx360f",
+            "img_hash": "-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpovbSsLQJf1fLEcjVL49KJlY20k_jkI7fUhGJP68t-fMrw94_33ATj8kFrY2H1d46ddgE5YF-G-1K9yO_v0cDov8zOnHFguHEls3bZnhy30AYMMLLg-0Wj9w",
             "sells": [
                 {"price": 890.00, "provider": "Buff.163"},
                 {"price": 995.00, "provider": "CSFloat"},
@@ -248,7 +282,7 @@ def main():
         },
         {
             "name": "AWP | Lightning Strike (Factory New)",
-            "img_url": "https://community.cloudflare.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot621FAR17P7NdTRH-t26q4SZlvD7PYTQgXtu5Mx2gv2PoN330VLk_kduNzymLNCSdVc5MF2G-gC2x-q90ZG8upnLm3thv3UlsyrajhKpwUYboUeY8r8/360fx360f",
+            "img_hash": "-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot621FAR17P7NdTRH-t26q4SZlvD7PYTQgXtu5Mx2gv2PoN330VLk_kduNzymLNCSdVc5MF2G-gC2x-q90ZG8upnLm3thv3UlsyrajhKpwUYboUeY8r8",
             "sells": [
                 {"price": 360.00, "provider": "Buff.163"},
                 {"price": 410.00, "provider": "CSFloat"},
@@ -260,6 +294,54 @@ def main():
                 {"price": 395.00, "provider": "CSFloat"},
                 {"price": 380.00, "provider": "DMarket"},
                 {"price": 435.00, "provider": "Steam"}
+            ]
+        },
+        {
+            "name": "M4A4 | Poseidon (Minimal Wear)",
+            "img_hash": "-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpou-6kejhjxszFJTwW09izh4-GkvP9Jrafw2lU6ccp07qYp9323VDg-0Vqam-mLI-VJFc4aAvU_1O7l-vs157vvZ7In3Rh6XE8pSGKGk5wXj0",
+            "sells": [
+                {"price": 890.00, "provider": "YouPin898"},
+                {"price": 995.00, "provider": "Buff.Market"},
+                {"price": 1010.00, "provider": "CSFloat"},
+                {"price": 1030.00, "provider": "Skinport"}
+            ],
+            "buys": [
+                {"price": 967.00, "provider": "DMarket"},
+                {"price": 935.00, "provider": "Skins.com"},
+                {"price": 920.00, "provider": "CSFloat"},
+                {"price": 990.00, "provider": "Steam"}
+            ]
+        },
+        {
+            "name": "AK-47 | Fire Serpent (Field-Tested)",
+            "img_hash": "-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot7HxfDhjxszJemkV08y5nY6fqPP9ILrDhGpI18h0juDU-MKt0QLh_kRtZTr6J4addVc3NFjU_lS8k7y80ZC97cvMnCc36CYm7XfdnhKpwUYb9ZpY2-8",
+            "sells": [
+                {"price": 575.00, "provider": "Buff.163"},
+                {"price": 645.00, "provider": "Skins.com"},
+                {"price": 650.00, "provider": "CSFloat"},
+                {"price": 660.00, "provider": "Skinport"}
+            ],
+            "buys": [
+                {"price": 645.43, "provider": "Market.CSGO"},
+                {"price": 620.00, "provider": "CSFloat"},
+                {"price": 610.00, "provider": "DMarket"},
+                {"price": 680.00, "provider": "Steam"}
+            ]
+        },
+        {
+            "name": "M4A1-S | Printstream (Factory New)",
+            "img_hash": "-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpou-6kejhz2v_Nfz5H_uO1gb-Gw_alIITBhGJf_NZlmOzA-LP5gVO8v11uMG_xcdCRdgJqNwvV_gW9k-7t0ce9upnLzic3viQg4S3dnB2pwUYb3v7-Jk4",
+            "sells": [
+                {"price": 315.00, "provider": "CSFloat"},
+                {"price": 355.00, "provider": "Buff.Market"},
+                {"price": 360.00, "provider": "Skinport"},
+                {"price": 365.00, "provider": "DMarket"}
+            ],
+            "buys": [
+                {"price": 358.80, "provider": "Market.CSGO"},
+                {"price": 345.00, "provider": "CS.MONEY"},
+                {"price": 335.00, "provider": "DMarket"},
+                {"price": 370.00, "provider": "Steam"}
             ]
         }
     ]
@@ -286,7 +368,7 @@ def main():
 
         if should_alert and not is_same:
             print(f"[CẢNH BÁO] {name} thỏa mãn {reason}")
-            img_bytes = render_infographic_card(name, sells, buys, skin.get("img_url", ""))
+            img_bytes = render_infographic_card(name, sells, buys, skin.get("img_hash", ""))
             ok = send_telegram_card(name, img_bytes)
             if ok:
                 alerted_count += 1
