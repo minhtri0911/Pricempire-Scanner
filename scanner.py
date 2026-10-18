@@ -51,89 +51,101 @@ def get_font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_hash: str = "") -> bytes:
-    W, H = 880, 520
+    W, H = 1000, 600
     card = Image.new("RGB", (W, H), (13, 27, 36))
     draw = ImageDraw.Draw(card)
 
-    font_header = get_font(23, bold=True)
-    font_rank = get_font(17, bold=True)
-    font_price = get_font(25, bold=True)
-    font_market = get_font(16, bold=False)
+    font_header = get_font(28, bold=True)
+    font_rank = get_font(20, bold=True)
+    font_price = get_font(32, bold=True)
+    font_market = get_font(18, bold=False)
 
-    left_w = 290
+    # 1. Khung chứa ảnh vũ khí bên trái
+    left_w = 340
     draw.rectangle([(20, 20), (left_w, H - 20)], fill=(10, 20, 28))
 
-    # Tải ảnh vũ khí với SSL bypass
     skin_loaded = False
     if img_hash:
         cdn_urls = [
+            f"https://community.cloudflare.steamstatic.com/economy/image/{img_hash}/360fx360f",
             f"https://community.cloudflare.steamstatic.com/economy/image/{img_hash}",
-            f"https://steamcommunity-a.akamaihd.net/economy/image/{img_hash}",
-            f"https://community.cloudflare.steamstatic.com/economy/image/{img_hash}/360fx360f"
+            f"https://steamcommunity-a.akamaihd.net/economy/image/{img_hash}/360fx360f",
+            f"https://steamcommunity-a.akamaihd.net/economy/image/{img_hash}"
         ]
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
         ssl_ctx.verify_mode = ssl.CERT_NONE
 
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Referer": "https://steamcommunity.com/"
+        }
+
         for url in cdn_urls:
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as resp:
-                    raw_img = Image.open(io.BytesIO(resp.read())).convert("RGBA")
-                    raw_img.thumbnail((left_w - 30, H - 60), Image.Resampling.LANCZOS)
-                    x_pos = 20 + (left_w - 20 - raw_img.width) // 2
-                    y_pos = (H - raw_img.height) // 2
-                    card.paste(raw_img, (x_pos, y_pos), raw_img)
-                    skin_loaded = True
-                    break
-            except Exception:
-                pass
+                    raw_data = resp.read()
+                    if raw_data:
+                        raw_img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
+                        raw_img.thumbnail((left_w - 40, H - 80), Image.Resampling.LANCZOS)
+                        x_pos = 20 + (left_w - 20 - raw_img.width) // 2
+                        y_pos = (H - raw_img.height) // 2
+                        card.paste(raw_img, (x_pos, y_pos), raw_img)
+                        skin_loaded = True
+                        break
+            except Exception as e:
+                print(f"Lỗi tải ảnh: {e}")
 
     if not skin_loaded:
-        draw.text((65, H // 2 - 12), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
+        draw.text((70, H // 2 - 15), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
 
-    right_x = left_w + 20
-    col_w = (W - right_x - 30) // 2
+    # 2. Hai cột bên phải
+    right_x = left_w + 25
+    col_w = (W - right_x - 35) // 2
 
     # Header GIÁ BÁN
-    draw.rectangle([(right_x, 20), (right_x + col_w, 64)], fill=(0, 77, 79))
-    draw.text((right_x + col_w // 2 - 48, 28), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
+    draw.rectangle([(right_x, 20), (right_x + col_w, 75)], fill=(0, 77, 79))
+    draw.text((right_x + col_w // 2 - 60, 32), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
 
     # Header GIÁ MUA
-    buy_x = right_x + col_w + 10
-    draw.rectangle([(buy_x, 20), (buy_x + col_w, 64)], fill=(0, 56, 92))
-    draw.text((buy_x + col_w // 2 - 48, 28), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
+    buy_x = right_x + col_w + 15
+    draw.rectangle([(buy_x, 20), (buy_x + col_w, 75)], fill=(0, 56, 92))
+    draw.text((buy_x + col_w // 2 - 60, 32), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
 
-    y_start = 86
-    row_h = 104
+    y_start = 95
+    row_h = 120
     red_dot = (235, 50, 50)
 
+    # 3. Vẽ 4 dòng GIÁ BÁN
     s1_price = sell_list[0]['price'] if sell_list and sell_list[0]['price'] > 0 else 1.0
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(right_x + 5, cur_y + 4), (right_x + 15, cur_y + 14)], fill=red_dot)
-        draw.text((right_x + 24, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
+        draw.ellipse([(right_x + 5, cur_y + 4), (right_x + 19, cur_y + 18)], fill=red_dot)
+        draw.text((right_x + 28, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(sell_list):
             item = sell_list[i]
-            draw.text((right_x + 24, cur_y + 25), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
+            draw.text((right_x + 28, cur_y + 28), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             diff_text = ""
             if i > 0:
                 pct = ((item['price'] - s1_price) / s1_price) * 100.0
                 diff_text = f" ({pct:+.2f}%)"
             provider = item.get("provider", "Market")
-            draw.text((right_x + 24, cur_y + 60), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
+            draw.text((right_x + 28, cur_y + 68), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
 
+    # 4. Vẽ 4 dòng GIÁ MUA
     for i in range(4):
         cur_y = y_start + i * row_h
-        draw.ellipse([(buy_x + 5, cur_y + 4), (buy_x + 15, cur_y + 14)], fill=red_dot)
-        draw.text((buy_x + 24, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
+        draw.ellipse([(buy_x + 5, cur_y + 4), (buy_x + 19, cur_y + 18)], fill=red_dot)
+        draw.text((buy_x + 28, cur_y), f"Hạng {i+1}", fill=(185, 200, 215), font=font_rank)
 
         if i < len(buy_list):
             item = buy_list[i]
-            draw.text((buy_x + 24, cur_y + 25), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
+            draw.text((buy_x + 28, cur_y + 28), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             provider = "Steam" if i == 3 else item.get("provider", "Market")
-            draw.text((buy_x + 24, cur_y + 60), provider, fill=(145, 165, 185), font=font_market)
+            draw.text((buy_x + 28, cur_y + 68), provider, fill=(145, 165, 185), font=font_market)
 
     out_buffer = io.BytesIO()
     card.save(out_buffer, format="PNG")
@@ -154,16 +166,17 @@ def send_telegram_card(skin_name: str, image_bytes: bytes) -> bool:
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(f'Content-Disposition: form-data; name="chat_id"\r\n\r\n{CHAT_ID}\r\n'.encode("utf-8"))
 
+    # Caption trên đầu
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(f'Content-Disposition: form-data; name="caption"\r\n\r\n{caption}\r\n'.encode("utf-8"))
 
-    # Đưa tiêu đề và tên skin LÊN TRÊN ĐẦU ảnh
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(b'Content-Disposition: form-data; name="show_caption_above_media"\r\n\r\ntrue\r\n')
 
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(b'Content-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n')
 
+    # File ảnh
     body.extend(f"--{boundary}\r\n".encode("utf-8"))
     body.extend(b'Content-Disposition: form-data; name="photo"; filename="alert_card.png"\r\nContent-Type: image/png\r\n\r\n')
     body.extend(image_bytes)
@@ -218,11 +231,11 @@ def check_triggers(skin_name: str, sell_list: list, buy_list: list, old_state: d
     b2 = buy_list[1]['price']
     b3 = buy_list[2]['price']
 
-    # NHÁNH 1: S1 rẻ hơn S2 >= 10% VÀ có ít nhất 1 trong 3 giá mua ngoài Steam > S1
+    # NHÁNH 1
     if (s1 <= s2 * 0.90) and (max(b1, b2, b3) > s1):
         return True, "NHÁNH 1 (S1 rẻ hơn S2 >= 10% & Giá mua ngoài Steam > S1)"
 
-    # NHÁNH 2: Biến động giá >= 5% so với lần quét trước
+    # NHÁNH 2
     if skin_name in old_state:
         prev = old_state[skin_name]
         prev_b1 = prev.get("b1", 0)
@@ -242,11 +255,10 @@ def check_triggers(skin_name: str, sell_list: list, buy_list: list, old_state: d
     return False, ""
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Bắt đầu chu kỳ quét toàn thị trường...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Bắt đầu chu kỳ quét...")
     old_state = load_state()
     new_state = dict(old_state)
 
-    # Danh mục toàn diện các skin thị trường từ $100 - $1,000 USD
     market_candidates = [
         {
             "name": "StatTrak™ AWP | Oni Taiji (Field-Tested)",
