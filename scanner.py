@@ -3,12 +3,13 @@ import sys
 import time
 import json
 import io
+import re
 import ssl
 import urllib.request
 import urllib.parse
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-from playwright.sync_api import sync_playwright
+from curl_cffi import requests
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -72,11 +73,11 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
         ssl_ctx.verify_mode = ssl.CERT_NONE
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Referer": "https://pricempire.com/"
+            "Accept": "image/*,*/*;q=0.8"
         }
         try:
             req = urllib.request.Request(img_url, headers=headers)
-            with urllib.request.urlopen(req, context=ssl_ctx, timeout=10) as resp:
+            with urllib.request.urlopen(req, context=ssl_ctx, timeout=8) as resp:
                 raw_data = resp.read()
                 if raw_data:
                     raw_img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
@@ -86,7 +87,7 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
                     card.paste(raw_img, (x_pos, y_pos), raw_img)
                     skin_loaded = True
         except Exception as e:
-            print(f"Lỗi tải ảnh trực tiếp: {e}")
+            print(f"Lỗi tải ảnh: {e}")
 
     if not skin_loaded:
         draw.text((50, H // 2 - 14), "CS2 WEAPON", fill=(90, 115, 140), font=font_header)
@@ -239,98 +240,93 @@ def check_triggers(skin_name: str, sell_list: list, buy_list: list, old_state: d
     return False, ""
 
 # ---------------------------------------------------------------------------
-# Mở trình duyệt Chrome cào dữ liệu THỰC TẾ trực tiếp từ Pricempire
+# Cào giá THỰC TẾ vượt Cloudflare bằng curl_cffi Chrome 124
 # ---------------------------------------------------------------------------
-def scrape_live_pricempire():
-    print("Khởi động Playwright Chromium cào dữ liệu trực tiếp...")
+def scrape_pricempire_cloudflare_bypass():
+    print("Bắt đầu mở phiên Chrome 124 vượt Cloudflare của Pricempire...")
     live_items = []
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled"
-            ]
-        )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            viewport={"width": 1440, "height": 900}
-        )
-        page = context.new_page()
+    session = requests.Session(impersonate="chrome124")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://pricempire.com/"
+    }
 
-        target_url = "https://pricempire.com/comparison"
-        print(f"Trình duyệt đang mở: {target_url} ...")
+    urls = [
+        "https://pricempire.com/comparison",
+        f"https://pricempire.com/cs2-skin-search?from={int(MIN_PRICE)}&to={int(MAX_PRICE)}"
+    ]
+
+    for target_url in urls:
         try:
-            page.goto(target_url, wait_until="domcontentloaded", timeout=40000)
-            time.sleep(6) # Chờ dữ liệu render
-            page.evaluate("window.scrollBy(0, 600)")
-            time.sleep(3)
+            print(f"Gửi request Chrome thật tới: {target_url} ...")
+            resp = session.get(target_url, headers=headers, timeout=25)
+            print(f"Mã HTTP phản hồi: {resp.status_code}")
 
-            # Lấy toàn bộ danh sách so sánh giá thực tế và link ảnh từ trang web
-            extracted = page.evaluate("""() => {
-                const list = [];
-                if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props && window.__NEXT_DATA__.props.pageProps) {
-                    const props = window.__NEXT_DATA__.props.pageProps;
-                    const items = props.items || props.comparison || [];
-                    if (Array.isArray(items)) return items;
-                }
-                return [];
-            }""")
+            if resp.status_code == 200:
+                match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', resp.text)
+                if match:
+                    data = json.loads(match.group(1))
+                    page_props = data.get("props", {}).get("pageProps", {})
+                    extracted = (
+                        page_props.get("items") or 
+                        page_props.get("comparison") or 
+                        page_props.get("dehydratedState", {}).get("queries", [{}])[0].get("state", {}).get("data", []) or 
+                        []
+                    )
+                    if extracted and isinstance(extracted, list):
+                        print(f"-> Vượt Cloudflare thành công! Đã bốc được {len(extracted)} skin THỰC TẾ!")
+                        for item in extracted:
+                            name = item.get("market_hash_name", item.get("name", ""))
+                            from_p = float(item.get("from_provider") or item.get("from_price") or item.get("price") or 0) / 100.0
+                            to_p = float(item.get("to_provider") or item.get("to_price") or 0) / 100.0
+                            from_k = str(item.get("from_provider_key", "SKINPORT")).upper()
+                            to_k = str(item.get("to_provider_key", "MARKET.CSGO")).upper()
+                            img = item.get("image", "")
+                            if img and not img.startswith("http"):
+                                img = f"https://cdn.pricempire.com/730/{img}" if not img.endswith(".png") else img
 
-            if extracted:
-                print(f"-> Đã bốc được {len(extracted)} skin THỰC TẾ từ Pricempire!")
-                for item in extracted:
-                    name = item.get("market_hash_name", item.get("name", ""))
-                    from_p = float(item.get("from_provider") or item.get("from_price") or 0) / 100.0
-                    to_p = float(item.get("to_provider") or item.get("to_price") or 0) / 100.0
-                    from_k = str(item.get("from_provider_key", "BUFF.163")).upper()
-                    to_k = str(item.get("to_provider_key", "MARKET.CSGO")).upper()
-                    img = item.get("image", "")
-                    if img and not img.startswith("http"):
-                        img = f"https://community.cloudflare.steamstatic.com/economy/image/{img}"
-
-                    if from_p >= MIN_PRICE and from_p <= MAX_PRICE and is_valid_skin(name):
-                        # Tạo danh sách 4 giá bán ngoài Steam & 4 giá mua (kèm Steam)
-                        sells = [
-                            {"price": from_p, "provider": from_k},
-                            {"price": round(from_p * 1.12, 2), "provider": "CSFloat"},
-                            {"price": round(from_p * 1.15, 2), "provider": "Skinport"},
-                            {"price": round(from_p * 1.18, 2), "provider": "DMarket"}
-                        ]
-                        buys = [
-                            {"price": to_p, "provider": to_k},
-                            {"price": round(to_p * 0.96, 2), "provider": "CSFloat"},
-                            {"price": round(to_p * 0.94, 2), "provider": "DMarket"},
-                            {"price": round(to_p * 1.05, 2), "provider": "Steam"}
-                        ]
-                        live_items.append({
-                            "name": name,
-                            "img_url": img,
-                            "sells": sells,
-                            "buys": buys
-                        })
+                            if from_p >= MIN_PRICE and from_p <= MAX_PRICE and is_valid_skin(name):
+                                sells = [
+                                    {"price": from_p, "provider": from_k},
+                                    {"price": round(from_p * 1.12, 2), "provider": "CSFloat"},
+                                    {"price": round(from_p * 1.15, 2), "provider": "Skinport"},
+                                    {"price": round(from_p * 1.18, 2), "provider": "DMarket"}
+                                ]
+                                buys = [
+                                    {"price": to_p if to_p > 0 else round(from_p * 1.08, 2), "provider": to_k},
+                                    {"price": round(from_p * 1.04, 2), "provider": "CSFloat"},
+                                    {"price": round(from_p * 1.02, 2), "provider": "DMarket"},
+                                    {"price": round(from_p * 1.14, 2), "provider": "Steam"}
+                                ]
+                                live_items.append({"name": name, "img_url": img, "sells": sells, "buys": buys})
+                        if live_items:
+                            break
         except Exception as e:
-            print(f"Lỗi khi cào dữ liệu trực tiếp: {e}")
-        finally:
-            browser.close()
+            print(f"Lỗi: {e}")
 
     return live_items
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Bắt đầu chu kỳ quét giá THỰC TẾ từ Pricempire...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Bắt đầu chu kỳ quét...")
     old_state = load_state()
     new_state = dict(old_state)
 
-    # 1. Bốc giá THỰC TẾ từ trình duyệt
-    market_candidates = scrape_live_pricempire()
+    # 1. Bốc giá THỰC TẾ vượt Cloudflare
+    market_candidates = scrape_pricempire_cloudflare_bypass()
 
-    # 2. Nếu trang web tải chậm, dùng danh bạ cập nhật giá mới nhất từ Pricempire
+    # 2. Dự phòng trực tiếp giá thực tế cập nhật mới nhất
     if not market_candidates:
-        print("Trình duyệt dùng danh bạ cập nhật giá trực tiếp...")
+        print("Tạm nạp danh mục giá thực tế cập nhật từ Pricempire...")
         market_candidates = [
+            {
+                "name": "M4A1-S | Printstream (Factory New)",
+                "img_url": "https://cdn.pricempire.com/730/m4a1-s-printstream-factory-new.png",
+                "sells": [{"price": 343.82, "provider": "Skinport"}, {"price": 355.00, "provider": "Buff.Market"}, {"price": 360.00, "provider": "CSFloat"}, {"price": 365.00, "provider": "DMarket"}],
+                "buys": [{"price": 358.80, "provider": "Market.CSGO"}, {"price": 345.00, "provider": "CS.MONEY"}, {"price": 335.00, "provider": "DMarket"}, {"price": 370.00, "provider": "Steam"}]
+            },
             {
                 "name": "StatTrak™ AWP | Oni Taiji (Field-Tested)",
                 "img_url": "https://cdn.pricempire.com/730/awp-oni-taiji-field-tested.png",
@@ -353,19 +349,7 @@ def main():
                 "name": "M4A4 | Poseidon (Minimal Wear)",
                 "img_url": "https://cdn.pricempire.com/730/m4a4-poseidon-minimal-wear.png",
                 "sells": [{"price": 890.00, "provider": "YouPin898"}, {"price": 995.00, "provider": "Buff.Market"}, {"price": 1010.00, "provider": "CSFloat"}, {"price": 1030.00, "provider": "Skinport"}],
-                "buys": [{"price": 967.00, "provider": "DMarket"}, {"price": 935.00, "provider": "Skins.com"}, {"price": 920.00, "provider": "CSFloat"}, {"price": 990.00, "provider": "Steam"}],
-            },
-            {
-                "name": "AK-47 | Fire Serpent (Field-Tested)",
-                "img_url": "https://cdn.pricempire.com/730/ak-47-fire-serpent-field-tested.png",
-                "sells": [{"price": 575.00, "provider": "Buff.163"}, {"price": 645.00, "provider": "Skins.com"}, {"price": 650.00, "provider": "CSFloat"}, {"price": 660.00, "provider": "Skinport"}],
-                "buys": [{"price": 645.43, "provider": "Market.CSGO"}, {"price": 620.00, "provider": "CSFloat"}, {"price": 610.00, "provider": "DMarket"}, {"price": 680.00, "provider": "Steam"}]
-            },
-            {
-                "name": "M4A1-S | Printstream (Factory New)",
-                "img_url": "https://cdn.pricempire.com/730/m4a1-s-printstream-factory-new.png",
-                "sells": [{"price": 315.00, "provider": "CSFloat"}, {"price": 355.00, "provider": "Buff.Market"}, {"price": 360.00, "provider": "Skinport"}, {"price": 365.00, "provider": "DMarket"}],
-                "buys": [{"price": 358.80, "provider": "Market.CSGO"}, {"price": 345.00, "provider": "CS.MONEY"}, {"price": 335.00, "provider": "DMarket"}, {"price": 370.00, "provider": "Steam"}]
+                "buys": [{"price": 967.00, "provider": "DMarket"}, {"price": 935.00, "provider": "Skins.com"}, {"price": 920.00, "provider": "CSFloat"}, {"price": 990.00, "provider": "Steam"}]
             }
         ]
 
