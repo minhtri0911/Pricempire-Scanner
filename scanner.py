@@ -51,14 +51,14 @@ def get_font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_urls: list = None) -> bytes:
-    W, H = 940, 520
+    W, H = 940, 500
     card = Image.new("RGB", (W, H), (13, 27, 36))
     draw = ImageDraw.Draw(card)
 
     font_header = get_font(26, bold=True)
     font_rank = get_font(19, bold=True)
-    font_price = get_font(33, bold=True)   # Giá tăng +3% lên 33pt
-    font_market = get_font(23, bold=False) # Tên sàn tăng +30% lên 23pt
+    font_price = get_font(36, bold=True)   # Giá tăng +10% lên 36pt Bold
+    font_market = get_font(23, bold=False) # Tên sàn giữ nguyên 23pt to rõ
 
     # 1. Khung chứa ảnh vũ khí bên trái
     left_w = 270
@@ -108,7 +108,7 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
     draw.text((buy_x + col_w // 2 - 55, 23), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
 
     y_start = 74
-    row_h = 98
+    row_h = 96
     red_dot = (235, 50, 50)
 
     # 3. Vẽ 4 dòng GIÁ BÁN
@@ -126,8 +126,8 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
                 pct = ((item['price'] - s1_price) / s1_price) * 100.0
                 diff_text = f" ({pct:+.2f}%)"
             provider = item.get("provider", "Market")
-            # Dòng tên sàn tăng khoảng cách +50% xuống (cur_y + 72px)
-            draw.text((right_x + 24, cur_y + 72), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
+            # Khoảng cách giảm 15% (đặt tại cur_y + 65px)
+            draw.text((right_x + 24, cur_y + 65), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
 
     # 4. Vẽ 4 dòng GIÁ MUA
     for i in range(4):
@@ -139,8 +139,8 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
             item = buy_list[i]
             draw.text((buy_x + 24, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             provider = "Steam" if i == 3 else item.get("provider", "Market")
-            # Dòng tên sàn tăng khoảng cách +50% xuống (cur_y + 72px)
-            draw.text((buy_x + 24, cur_y + 72), provider, fill=(145, 165, 185), font=font_market)
+            # Khoảng cách giảm 15% (đặt tại cur_y + 65px)
+            draw.text((buy_x + 24, cur_y + 65), provider, fill=(145, 165, 185), font=font_market)
 
     out_buffer = io.BytesIO()
     card.save(out_buffer, format="PNG")
