@@ -51,18 +51,19 @@ def get_font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img_urls: list = None) -> bytes:
-    W, H = 920, 420  # Chiều cao hạ 20%
+    W, H = 920, 460  # Thêm khoảng đệm an toàn dưới đáy cho con dấu thời gian Telegram
     card = Image.new("RGB", (W, H), (13, 27, 36))
     draw = ImageDraw.Draw(card)
 
-    font_header = get_font(28, bold=True)
-    font_rank = get_font(20, bold=True)
-    font_price = get_font(34, bold=True)  # Cỡ chữ tăng +30%
-    font_market = get_font(19, bold=False)
+    # Cỡ chữ giảm 5%
+    font_header = get_font(26, bold=True)
+    font_rank = get_font(19, bold=True)
+    font_price = get_font(32, bold=True)
+    font_market = get_font(18, bold=False)
 
-    # 1. Khung chứa ảnh vũ khí bên trái
+    # 1. Khung chứa ảnh vũ khí bên trái (260px)
     left_w = 260
-    draw.rectangle([(15, 15), (left_w, H - 15)], fill=(10, 20, 28))
+    draw.rectangle([(15, 15), (left_w, H - 20)], fill=(10, 20, 28))
 
     skin_loaded = False
     if img_urls:
@@ -82,7 +83,7 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
                     raw_data = resp.read()
                     if raw_data:
                         raw_img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
-                        raw_img.thumbnail((left_w - 20, H - 40), Image.Resampling.LANCZOS)
+                        raw_img.thumbnail((left_w - 20, H - 50), Image.Resampling.LANCZOS)
                         x_pos = 15 + (left_w - 15 - raw_img.width) // 2
                         y_pos = (H - raw_img.height) // 2
                         card.paste(raw_img, (x_pos, y_pos), raw_img)
@@ -96,19 +97,19 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
 
     # 2. Hai cột bên phải
     right_x = left_w + 25
-    col_w = (W - right_x - 30) // 2
+    col_w = (W - right_x - 45) // 2
 
     # Header GIÁ BÁN
     draw.rectangle([(right_x, 15), (right_x + col_w, 62)], fill=(0, 77, 79))
-    draw.text((right_x + col_w // 2 - 60, 23), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
+    draw.text((right_x + col_w // 2 - 55, 23), "GIÁ BÁN", fill=(255, 255, 255), font=font_header)
 
     # Header GIÁ MUA
     buy_x = right_x + col_w + 15
     draw.rectangle([(buy_x, 15), (buy_x + col_w, 62)], fill=(0, 56, 92))
-    draw.text((buy_x + col_w // 2 - 60, 23), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
+    draw.text((buy_x + col_w // 2 - 55, 23), "GIÁ MUA", fill=(255, 255, 255), font=font_header)
 
     y_start = 74
-    row_h = 84
+    row_h = 82
     red_dot = (235, 50, 50)
 
     # 3. Vẽ 4 dòng GIÁ BÁN
@@ -126,9 +127,9 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
                 pct = ((item['price'] - s1_price) / s1_price) * 100.0
                 diff_text = f" ({pct:+.2f}%)"
             provider = item.get("provider", "Market")
-            draw.text((right_x + 24, cur_y + 58), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
+            draw.text((right_x + 24, cur_y + 57), f"{provider}{diff_text}", fill=(145, 165, 185), font=font_market)
 
-    # 4. Vẽ 4 dòng GIÁ MUA
+    # 4. Vẽ 4 dòng GIÁ MUA (Chừa dòng riêng dưới cùng cho con dấu giờ Telegram)
     for i in range(4):
         cur_y = y_start + i * row_h
         draw.ellipse([(buy_x + 5, cur_y + 3), (buy_x + 18, cur_y + 16)], fill=red_dot)
@@ -138,7 +139,7 @@ def render_infographic_card(skin_name: str, sell_list: list, buy_list: list, img
             item = buy_list[i]
             draw.text((buy_x + 24, cur_y + 24), f"{item['price']:,.2f} USD", fill=(255, 255, 255), font=font_price)
             provider = "Steam" if i == 3 else item.get("provider", "Market")
-            draw.text((buy_x + 24, cur_y + 58), provider, fill=(145, 165, 185), font=font_market)
+            draw.text((buy_x + 24, cur_y + 57), provider, fill=(145, 165, 185), font=font_market)
 
     out_buffer = io.BytesIO()
     card.save(out_buffer, format="PNG")
